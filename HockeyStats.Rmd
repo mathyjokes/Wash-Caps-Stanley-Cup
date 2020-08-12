@@ -1,0 +1,366 @@
+---
+title: "HockeyStats"
+output:
+  word_document: default
+---
+
+First, we import the data. Below is the description of each of the variables. Then, we compile all of the years, make sure that Cup is categorical and create a note for the lockout year
+```{r}
+#  Rank is final rank for the year
+#  Team is the team name
+#  GP is games played (82 for all full seasons)
+#  TOI is time on ice
+#  GF is goals for
+#  GA is goals against
+#  GF60 is goals for per 60 minutes of play
+#  GA60 is goals against per 60 minutes of play
+#  GF. is goals for percentage, out of all the goals they're involved with
+#  SF is shots for (while on ice)
+#  SA is shots against (while on ice)
+#  Sh. is shot percentage by team while on ice
+#  Sv. is save percentage while on the ice
+#  PDO is shooting percentage + save percentage while on ice
+#  CF is corsi for while on ice
+#  CA is corsi against while on ice
+#  CF60 is corsi for per 60 minutes of play
+#  CA60 is corsi against per 60 minutes of play
+#  CF. is corsi for percentage, out of all the corsi events they're involved with
+#  CPDO is corsi pdo = fenwick shooting percentage + fenwick save percentage
+#  OZFO. is offensive zone faceoff percentage - percentage of faceoffs in offensive zone
+#  DZFO. is defensive zone faceoff percentage - percentage of faceoffs in defensive zone
+#  NFZO. is neutral zone faceoff percentage - percentage of faceoffs in neutral zone
+#  X is 
+
+team07<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\200708Team.csv", header=T)
+team08<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\200809Team.csv", header=T)
+team09<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\200910Team.csv", header=T)
+team10<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201011Team.csv", header=T)
+team11<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201112Team.csv", header=T)
+team12<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201213Team.csv", header=T)
+#note that this was the lockout year. don't think it will make a difference in percentages, but might in counts.
+team13<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201314Team.csv", header=T)
+team14<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201415Team.csv", header=T)
+team15<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201516Team.csv", header=T)
+team16<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201617Team.csv", header=T)
+#allyears is all bt the current year, as that has not finished yet. that will be the "new data"
+allyears<-rbind(team07, team08, team09, team10, team11, team12, team13, team14, team15)
+allyears$Cup<-as.factor(allyears$Cup)
+str(which(allyears$Year==200809))
+lockout<-which(allyears$Year==201213)
+yearswol<-allyears[-lockout,]
+team16$Cup<-as.factor(c(1,-1, rep(0, 28)))
+nrow(yearswol)
+```
+
+
+
+Now, we start our analysis. First, we want to know what the right number, and which, features to use. So, we use cross-validation with each of the years as test data, in turn. We find that a low number of features leads to the lowest error, 1-3 features does best before a big jump in error.
+```{r}
+library(leaps)
+########## create a way of cross-validation where each year individually is the testing set ###
+predict.regsubsets = function (object ,newdata ,id ,...){
+ form=as.formula (object$call [[2]])
+ mat=model.matrix (form ,newdata )
+ coefi =coef(object ,id=id)
+ xvars =names (coefi )
+ mat[,xvars ]%*% coefi
+}
+#Get the best subset through cross validation. taking out games played and time on ice because games played is constant and time on ice is silly
+folds=c(200708, 200809, 200910, 201011, 201112, 201314, 201415)
+cv.errors<-matrix(NA, 7, 19, dimnames=list(NULL, paste(1:19)))
+for(j in 1:7){
+  best.fit=regsubsets(Rank~GF+GA+GF60+GA60+GF.+SF+SA+Sh.+Sv.+PDO+CF+CA+CF60+CA60+CF.+CPDO+OZFO.+DZFO.+NZFO., data = yearswol[-which(yearswol$Year==folds[j]),], nvmax=19)
+  for(i in 1:19){
+  pred=predict.regsubsets(best.fit,yearswol[which(yearswol$Year==folds[j]),], id=i)
+ cv.errors [j,i]=mean((yearswol[which(yearswol$Year==folds[j]), 1] -pred)^2)
+ }
+}
+mean.cv.errors<-apply(cv.errors, 2, mean)
+mean.cv.errors
+#It seems that a 13 or 14 feature selection is best here, which is completely disfferent than how it was before... Although i'll probably choose a 7-8 feature selection becse of simplicity and understanding
+plot(mean.cv.errors, type="b")
+#These are the coefficients for these
+coef(best.fit, 8)
+lm.8<-lm(Rank~GF+GA+GF60+GA60+GF.+SA+Sh.+CF., data=yearswol)
+summary(lm.8)
+plot(lm.8)
+################################################
+
+#so, now we use this model to predict the outcome of the season! Not sure how good this is as a continous predicotr, because what we are actually looking for are positive integers 1-30, but i wasn't sure how to do that (not within my pay grade you know)
+reg.pred<-predict(lm.8, newdata=team16)
+preds.reg<-data.frame("team"=team16[,2], "predictions"=reg.pred)
+preds.reg[order(preds.reg$predictions),]
+actual2017<-c("Washington", "Columbus", "Minnesota", "Pittsburgh", "Chicago", "Edmonton", "Montreal", "Anaheim", "Nashville", "San Jose", "St. Louis", "NY Ranger", "Toronto", "NY Islanders", "Tampa Bay", "Calgary", "Boston", "Dallas", "Ottawa", "Winnipeg", "Los Angeles", "Detroit", "Carolina", "Philadelphia", "Buffalo", "Florida", "Vancouver", "Arizona", "New Jersey", "Colorado")
+mean(predict(lm.8, data=yearswol) == reg.pred)
+
+##################### DON'T KNOW HOW TO DO IT IN HERE BUT WHEN RPINTING OUT MAKE ALITTLE TABLE OF PREDICTED AND ACTUAL VALUES###########
+```
+
+
+One reason that the feature seelctor picked so few, and that everything had high errors, is becasue of the high colinearity among the features. We can also perform PCA for a regression and see whta that error is.
+```{r}
+#First, we take a look at the kinds of correlations we are dealing with here
+#Top are: CF-SF, TOI-GP, CA-SA, CPDO-DO, GF.-Rank (all above 90%)
+#Next: SF-TOI, SA-TOI, CF-TOI, CA-TOI, SF-GP, SA-GP, SF-GF, CF-GP, SA-GA, CA-GA, CA-GP, Sh.-GF60 (all above 80%)
+#this is a lot of high corelations! It makes sense, looking at the variables that we have (shots against will be very highyl correlated with shots against percentage, after all)
+
+library(reshape)
+cors<-cor(yearswol[,-c(2,24, 25)], use="complete")
+x <- subset(melt(cors), value != 1 | value!=NA)
+x <- x[with(x, order(-abs(x$value))),]
+x
+
+
+#Now, we preform PCA
+pr.out<-prcomp(yearswol[,-c(1,2,3,4,24,25)], scale=TRUE)
+biplot(pr.out, scale=0)
+#This is an interesting plot actually, because almost all of the variables seem to have strong effects. Especially many of them for the second principal component
+pr.var<-pr.out$sdev^2
+pve<-pr.var/sum(pr.var)
+pve
+###so it seems like 4 principal components explain all that variance!
+plot(cumsum (pve ), xlab="Principal Component", ylab ="Cumulative Proportion of Variance Explained", ylim=c(0,1) ,
+type="b")
+
+#But it turns out that the fourth principal component is not significant...
+pcs<-pr.out$x[,1:4]
+str(pcs)
+pc.fit<-lm(yearswol$Rank~ pcs[,1]+pcs[,2]+pcs[,3]+pcs[,4])
+#This has a lower adjusted r2 rate than above actually. maybe not as good here... but let's give ourselves a little prediction anyways, why the hell not
+summary(pc.fit)
+```
+
+
+```{r}
+
+################ LASSO ############ We choose lasso for interpretable results, also because i think feature selection might be nice to do
+library(glmnet)
+x=model.matrix(Rank~GF+GA+GF60+GA60+GF.+SF+SA+Sh.+Sv.+PDO+CF+CA+CF60+CA60+CF.+CPDO+OZFO.+DZFO.+NZFO., data = yearswol)
+y=yearswol$Rank
+grid =10^ seq (10,-2, length =100)
+train=sample (1: nrow(x), nrow(x)/2)
+test=(- train )
+y.test=y[test]
+
+ridge.mod =glmnet (x[train ,],y[train],alpha =0, lambda =grid)
+cv.out =cv.glmnet (x[train ,],y[train],alpha =0)
+bestlam =cv.out$lambda.min
+ridge.pred=predict (ridge.mod ,s=bestlam ,newx=x[test ,])
+mean(( ridge.pred -y.test)^2)
+
+out=glmnet (x,y,alpha =0, lambda =grid)
+ridge.coef=predict (out ,type ="coefficients",s=bestlam )[1:20 ,]
+#Wow, this zeros out almost everything!
+ridge.coef
+ridge.pred<-ridge.coef[1] + ridge.coef[3]*team16[,5]+ridge.coef[4]*team16[,6]+ridge.coef[5]*team16[,7]+ridge.coef[6]*team16[,8]+ridge.coef[7]*team16[,9]+ridge.coef[8]*team16[,10]+ridge.coef[9]*team16[,11]+ridge.coef[10]*team16[,12]+ridge.coef[11]*team16[,13]+ridge.coef[12]*team16[,14]+ridge.coef[13]*team16[,15]+ridge.coef[14]*team16[,16]+ridge.coef[15]*team16[,17]+ridge.coef[16]*team16[,18]+ridge.coef[17]*team16[,19]+ridge.coef[18]*team16[,20]+ridge.coef[19]*team16[,21]+ridge.coef[20]*team16[,22]
+preds.ridge<-data.frame("team"=team16[,2], "predictions"=ridge.pred)
+preds.ridge[order(preds.ridge$predictions),]
+
+lasso.mod =glmnet (x[train ,],y[train],alpha =1, lambda =grid)
+cv.out =cv.glmnet (x[train ,],y[train],alpha =1)
+bestlam =cv.out$lambda.min
+lasso.pred=predict (lasso.mod ,s=bestlam ,newx=x[test ,])
+mean(( lasso.pred -y.test)^2)
+
+out=glmnet (x,y,alpha =1, lambda =grid)
+lasso.coef=predict (out ,type ="coefficients",s=bestlam )[1:20 ,]
+#Wow, this zeros out almost everything!
+lasso.coef
+names(team16)
+lasso.pred<-lasso.coef[1]+ lasso.coef[6]*team16[,8]+lasso.coef[7]*team16[,9]
+preds.lass<-data.frame("team"=team16[,2], "predictions"=lasso.pred)
+preds.lass
+preds.lass[order(preds.lass$predictions),]
+```
+
+
+```{r}
+#now for them all together
+data.frame("Actual"=actual2017, "Reg"=preds.reg[order(preds.reg$predictions),1], "Lasso"=preds.lass[order(preds.lass$predictions),1], "Ridge"=preds.ridge[order(preds.ridge$predictions),1])
+mean(preds.reg[order(preds.reg$predictions),1]==actual2017)
+mean(preds.lass[order(preds.lass$predictions),1]==actual2017)
+mean(preds.ridge[order(preds.ridge$predictions),1]==actual2017)
+```
+
+
+LETS DO SOME CATEGORICAL BUSINESS SHALL WE???
+
+
+Now, we get into trees to try to predict the cup winner
+```{r}
+####### TREES #######
+library(tree)
+tree.cup<-tree(Cup~GF+GA+GF60+GA60+GF.+SF+SA+Sh.+Sv.+PDO+CF+CA+CF60+CA60+CF.+CPDO+OZFO.+DZFO.+NZFO., data=yearswol)
+tree.cup.2<-tree(Cup ~ GF + GA + GF60 + GA60 + GF. + SA + Sh. + CF., data=yearswol)
+#miscallsification rate of 5.4%.... not incredibly shabby
+summary(tree.cup)
+plot(tree.cup)
+plot(tree.cup.2)
+#doesn't work in this new r.....
+text(tree.cup.2, pretty=0)
+#This only classes as 1 a few times...
+tree.cup
+yearswol$Cup
+
+
+library(ISLR)
+train=sample (1:nrow(yearswol), nrow(yearswol)/2)
+yearswol.test<-yearswol[-train,]
+Cup.test<-yearswol$Cup[-train]
+tree.pred<-predict(tree.cup, yearswol.test, type="class")
+table(tree.pred, Cup.test)
+mean(tree.pred == Cup.test)
+#So this only predicts 0s......
+predict(tree.cup.2, team16, type="class")
+```
+
+
+
+Now, lets do some logistic regression
+```{r}
+col<-rep("black", nrow(yearswol))
+winners<-which(yearswol[,24]=="1")
+runners<-which(yearswol[,24]=="-1")
+col[winners]<-"red"
+col[runners]<-"green"
+glm.fit<-glm(Cup~ GF + GA + GF60 + GA60 + GF. + SF + SA + Sh. + Sv. + PDO + CF + CA + CF60 + CA60 + CF. + CPDO + OZFO. + DZFO. + NZFO., data=yearswol, family=binomial)
+summary(glm.fit)
+#this doesn't seem like many factors are significant, and i want to see if logistic regression is appropriate for all these. so, i will plot everything against Cup
+plot(yearswol$NZFO., yearswol$Cup, col=col, pch=16)
+plot(yearswol$GA60, yearswol$CPDO, col=col, pch=16)
+
+
+glm.small<-glm(Cup~ GA60 + CPDO, data=yearswol, family=binomial)
+summary(glm.small)
+```
+
+
+```{r}
+
+
+
+predict.regsubsets = function (object ,newdata ,id ,...){
+ form=as.formula (object$call [[2]])
+ mat=model.matrix (form ,newdata )
+ coefi =coef(object ,id=id)
+ xvars =names (coefi )
+ mat[,xvars ]%*% coefi
+}
+#Get the best subset through cross validation. taking out games played and time on ice because games played is constant and time on ice is silly
+folds=c(200708, 200809, 200910, 201011, 201112, 201314, 201415)
+cv.errors<-matrix(NA, 7, 19, dimnames=list(NULL, paste(1:19)))
+for(j in 1:7){
+  best.fit=regsubsets(Rank~GF+GA+GF60+GA60+GF.+SF+SA+Sh.+Sv.+PDO+CF+CA+CF60+CA60+CF.+CPDO+OZFO.+DZFO.+NZFO., data = yearswol[-which(yearswol$Year==folds[j]),], nvmax=19)
+  for(i in 1:19){
+  pred=predict.regsubsets(best.fit,yearswol[which(yearswol$Year==folds[j]),], id=i)
+ cv.errors [j,i]=mean((yearswol[which(yearswol$Year==folds[j]), 1] -pred)^2)
+ }
+}
+mean.cv.errors<-apply(cv.errors, 2, mean)
+mean.cv.errors
+#It seems that a 13 or 14 feature selection is best here, which is completely disfferent than how it was before... Although i'll probably choose a 7-8 feature selection becse of simplicity and understanding
+plot(mean.cv.errors, type="b")
+```
+
+
+
+```{r}
+library(MASS)
+#get an error that the variables are collinear, so take away some of the most collinear ones
+lda.all<-lda(Cup~ GF + GA + GF60 + GA60 + GF. + SF + SA + Sh. + Sv. + PDO + CF + CA + CF60 + CA60 + CF. + CPDO + OZFO. + DZFO. + NZFO., data=yearswol)
+#still get that collienarity error
+lda.small<-lda(Cup~ GA60 + GF. + SF + SA + Sv. + PDO + CA60 + CF. + OZFO. + NZFO., data=yearswol)
+lda.small
+lda.tiny<-lda(Cup ~ GF. + GA + SF + SA + Sh. + Sv. + PDO + CF + CA + OZFO. + DZFO. + NZFO., data = team16)
+lda.tiny$class
+names(team16)
+str(scale(team16[,c(6,9,10,11,12,13,14,15,16,21,22,23)]))
+
+lda.pred<-predict(lda.tiny, data=yearswol)
+lda.class<-lda.pred$class
+table(lda.class, yearswol$Cup)
+mean(lda.class==yearswol$Cup)
+
+lda.pred<-predict(lda.tiny, data=team16)
+lda.pred$class
+
+table(predict(lda.tiny, data=yearswol)$class, yearswol$Cup)
+mean(predict(lda.small, data=yearswol)$class == yearswol$Cup)
+table(predict(lda.tiny2, data=yearswol)$class, yearswol$Cup)
+mean(predict(lda.small2, data=yearswol)$class == yearswol$Cup)
+predict(lda.tiny, data=team16)$class
+
+lda.small2<-lda(Cup~ GA60 + GF. + SF + SA + Sv. + PDO + CA60 + CF. + OZFO. + NZFO., data=yearswol)
+lda.pred<-predict(lda.small2, data=team16)
+lda.pred$class
+lda.tiny2<-lda(Cup~ GA60 + GF. + SF + SA + Sv. + PDO + CA60 + CF. + OZFO. + NZFO., data=yearswol)
+with(yearswol,table(Cup))
+lda.pred<-predict(lda.tiny2, data=team16)
+yearswol[which(yearswol$Cup=="1"),24]<-1
+names(yearswol)
+predict(lda.tiny2, data=yearswol)$class
+table(predict(lda.tiny2, data=yearswol)$class, yearswol$Cup)
+mean(predict(lda.tiny2, data=yearswol)$class == yearswol$Cup)
+str(yearswol$Cup)
+head(yearswol$Cup)
+
+nrow(yearswol)
+
+team16[which(predict(lda.tiny, data=team16)$class == 1),2]
+team16[which(predict(lda.tiny, data=team16)$class == -1),2]
+names(team16)
+
+summary(team16)
+team15[which(predict(lda.tiny2, data=team15)$class==1), 2]
+
+```
+
+Let's try this now with some bayes 
+```{r}
+#but how do you predict which? does this just give you a general estimation of how likely 1 is for ANY of the variables? i already knew that, its 1/30.... so why is this helpful again? how does it help to predict low prob events???
+plot(dbeta(seq(0,1, .01), 4,4))
+data<-yearswol$Cup
+data[which(yearswol$Cup==-1)]<-0
+head(data)
+names(yearswol)
+post<-BernBeta(priorShape = c(4,4), dataVec = yearswol[which(yearswol$Team=="Washington"),9] < 54)
+post
+
+
+```
+
+
+
+
+```{r}
+#Can't get this to do anything but gibe me the same probability for each....
+
+#Lets give these neural nets a try babaaaay
+library(neuralnet)
+yearswol$Won<-rep(0, nrow(yearswol))
+yearswol$Lost<-rep(0, nrow(yearswol))
+yearswol$None<-rep(0, nrow(yearswol))
+yearswol$Won[which(yearswol$Cup==1)]<-1
+yearswol$Lost[which(yearswol$Cup==-1)]<-1
+yearswol$None[which(yearswol$Cup==0)]<-1
+
+names(yearswol)
+net.mult <- neuralnet(Won + Lost + None~GF + GA + GF60 + GA60 + GF. + SF + SA + Sh. + Sv. + PDO + CF + CA + CF60 + CA60 + CF. + CPDO + OZFO. + DZFO. + NZFO., yearswol, hidden=10, threshold=0.00001)
+
+#Plot the neural network
+plot(net.mult)
+
+net.results <- compute(net.mult, yearswol[,-c(1,2,3,4,24,25,26,27,28)]) #Run them through the neural network
+
+#Lets display a better version of the results
+cleanoutput <- cbind(yearswol$Won, yearswol$Lost, yearswol$None,
+                     as.data.frame(net.results$net.result))
+colnames(cleanoutput) <- c("Won", "Lost", "None", "Prob of Win", "Prob of Loss", "Prob of None")
+table(cleanoutput[,c(4,5,6)])
+cleanoutput
+
+newres<-net.results <- compute(net.mult, team16[,-c(1,2,3,4,24,25,26,27,28)])
+cleanoutput <- as.data.frame(net.results$net.result)
+colnames(cleanoutput) <- c("Prob of Win", "Prob of Loss", "Prob of None")
+cleanoutput
+```

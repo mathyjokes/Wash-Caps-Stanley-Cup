@@ -1,0 +1,63 @@
+---
+title: "To Print"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+#  Rank is final rank for the year
+#  Team is the team name
+#  GP is games played (82 for all full seasons)
+#  TOI is time on ice
+#  GF is goals for
+#  GA is goals against
+#  GF60 is goals for per 60 minutes of play
+#  GA60 is goals against per 60 minutes of play
+#  GF. is goals for percentage, out of all the goals they're involved with
+#  SF is shots for (while on ice)
+#  SA is shots against (while on ice)
+#  Sh. is shot percentage by team while on ice
+#  Sv. is save percentage while on the ice
+#  PDO is shooting percentage + save percentage while on ice
+#  CF is corsi for while on ice
+#  CA is corsi against while on ice
+#  CF60 is corsi for per 60 minutes of play
+#  CA60 is corsi against per 60 minutes of play
+#  CF. is corsi for percentage, out of all the corsi events they're involved with
+#  CPDO is corsi pdo = fenwick shooting percentage + fenwick save percentage
+#  OZFO. is offensive zone faceoff percentage - percentage of faceoffs in offensive zone
+#  DZFO. is defensive zone faceoff percentage - percentage of faceoffs in defensive zone
+#  NFZO. is neutral zone faceoff percentage - percentage of faceoffs in neutral zone
+#  X is 
+
+team07<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\200708Team.csv", header=T)
+team08<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\200809Team.csv", header=T)
+team09<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\200910Team.csv", header=T)
+team10<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201011Team.csv", header=T)
+team11<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201112Team.csv", header=T)
+team12<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201213Team.csv", header=T)
+#note that this was the lockout year. don't think it will make a difference in percentages, but might in counts.
+team13<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201314Team.csv", header=T)
+team14<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201415Team.csv", header=T)
+team15<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201516Team.csv", header=T)
+team16<-read.csv("C:\\Users\\Bridget\\Documents\\Math642\\Hockey\\201617Team.csv", header=T)
+#allyears is all bt the current year, as that has not finished yet. that will be the "new data"
+allyears<-rbind(team07, team08, team09, team10, team11, team12, team13, team14, team15)
+allyears$Cup<-as.factor(allyears$Cup)
+str(which(allyears$Year==200809))
+lockout<-which(allyears$Year==201213)
+library(reshape)
+cors<-cor(allyears[-lockout,-c(2,24, 25)], use="complete")
+x <- subset(melt(cors), value != 1 | value!=NA)
+x <- x[with(x, order(-abs(x$value))),]
+x
+
+#View correlations, in descending order, with only the numeric variables
+#Top are: CF-SF, TOI-GP, CA-SA, CPDO-DO, GF.-Rank (all above 90%)
+#Next: SF-TOI, SA-TOI, CF-TOI, CA-TOI, SF-GP, SA-GP, SF-GF, CF-GP, SA-GA, CA-GA, CA-GP, Sh.-GF60 (all above 80%)
+#this is a lot of high corelations! It makes sense, looking at the variables that we have (shots against will be very highyl correlated with shots against percentage, after all)
+library(corrplot)
+names(allyears[-lockout])[24]
+corrplot(cor(allyears[,-c(2,24)]))
+```
